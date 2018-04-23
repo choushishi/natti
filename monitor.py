@@ -2,36 +2,38 @@ import urllib.request
 import getpass
 from twilio.rest import Client
 import time
+import difflib
 
+# twilio configurations
+print("Please enter your twilio project account details: ")
 account_sid = getpass.getpass("sid: ")
 auth_token = getpass.getpass("token: ")
 from_nmb = getpass.getpass("from: ")
 to_nmb = getpass.getpass("to: ")
-
 client = Client(account_sid, auth_token)
 
+# monitor setup
 url = "https://www.naati.com.au/other-information/ccl-testing/"
-cached = urllib.request.urlopen(url).read()
-
+cached = urllib.request.urlopen(url).read().decode("utf-8").splitlines()
+cached = ["test"] + cached  # tesing twilio on first iteration
 starttime = time.time()
 refresh = 60.0
+
+# initialize differ
+d = difflib.Differ()
+
+# main loop
 while True:
     print("tick")
-    latest = urllib.request.urlopen(url).read()
-    diff = b""
-    if latest != cached:
+    latest = urllib.request.urlopen(url).read().decode("utf-8").splitlines()
+    diff = d.compare(cached, latest)
+    if cached != latest:
         print("diff!")
-        diff += b"diff detected:\n"
-        count = 0
-        for pair in zip(latest.splitlines(), cached.splitlines()):
-            if pair[0] != pair[1]:
-                diff += pair[0] + b" " + pair[1] + b"\n"
-                print(pair[0], pair[1])
-                if count > 5:
-                    break
-                count += 1
-
+        diff = "\n".join([l for l in diff if l.startswith('+ ') or l.startswith('- ')])  # only send differences
+        diff = diff[:130]  # limit sms body to 130 characters
+        print(diff)
         print("sending message")
-        message = client.messages.create(to=to_nmb, from_=from_nmb, body=diff.decode("utf-8"))
+        message = client.messages.create(to=to_nmb, from_=from_nmb, body=diff)
+        print("message sent")
         cached = latest
     time.sleep(refresh - ((time.time() - starttime) % refresh))
